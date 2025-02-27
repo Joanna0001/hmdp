@@ -2,11 +2,14 @@ package com.hmdp.controller;
 
 
 import cn.hutool.core.util.StrUtil;
+import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.hmdp.dto.Result;
 import com.hmdp.entity.Shop;
 import com.hmdp.service.IShopService;
 import com.hmdp.utils.SystemConstants;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
@@ -19,12 +22,16 @@ import javax.annotation.Resource;
  * @author 虎哥
  * @since 2021-12-22
  */
+@Slf4j
 @RestController
 @RequestMapping("/shop")
 public class ShopController {
 
     @Resource
     public IShopService shopService;
+
+    @Resource
+    private StringRedisTemplate stringRedisTemplate;
 
     /**
      * 根据id查询商铺信息
@@ -33,7 +40,22 @@ public class ShopController {
      */
     @GetMapping("/{id}")
     public Result queryShopById(@PathVariable("id") Long id) {
-        return Result.ok(shopService.getById(id));
+        String key = "shop:" + id;
+        String shopJson = stringRedisTemplate.opsForValue().get(key);
+
+        if(StrUtil.isNotBlank(shopJson)) {
+            Shop shop = JSONUtil.toBean(shopJson, Shop.class);
+            return Result.ok(shop);
+        }
+
+        Shop shop = shopService.getById(id);
+
+        if(shop == null) {
+            return Result.fail("店铺不存在");
+        }
+
+        stringRedisTemplate.opsForValue().set(key, JSONUtil.toJsonStr(shop));
+        return Result.ok(shop);
     }
 
     /**
