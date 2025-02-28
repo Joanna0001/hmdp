@@ -14,6 +14,10 @@ import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
 
+import java.util.concurrent.TimeUnit;
+
+import static com.hmdp.utils.RedisConstants.*;
+
 /**
  * <p>
  * 前端控制器
@@ -40,7 +44,7 @@ public class ShopController {
      */
     @GetMapping("/{id}")
     public Result queryShopById(@PathVariable("id") Long id) {
-        String key = "shop:" + id;
+        String key = CACHE_SHOP_KEY + id;
         String shopJson = stringRedisTemplate.opsForValue().get(key);
 
         if(StrUtil.isNotBlank(shopJson)) {
@@ -48,13 +52,20 @@ public class ShopController {
             return Result.ok(shop);
         }
 
+        // 判断命中的是否是空值
+        if(shopJson != null) {
+            return Result.fail("店铺信息不存在");
+        }
+
         Shop shop = shopService.getById(id);
 
         if(shop == null) {
+            // 将空值写入 redis，缓存穿透
+            stringRedisTemplate.opsForValue().set(key, "", CACHE_NULL_TTL, TimeUnit.MINUTES);
             return Result.fail("店铺不存在");
         }
 
-        stringRedisTemplate.opsForValue().set(key, JSONUtil.toJsonStr(shop));
+        stringRedisTemplate.opsForValue().set(key, JSONUtil.toJsonStr(shop), CACHE_SHOP_TTL, TimeUnit.MINUTES);
         return Result.ok(shop);
     }
 
@@ -78,9 +89,7 @@ public class ShopController {
      */
     @PutMapping
     public Result updateShop(@RequestBody Shop shop) {
-        // 写入数据库
-        shopService.updateById(shop);
-        return Result.ok();
+        return shopService.updateShop(shop);
     }
 
     /**
